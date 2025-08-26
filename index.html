@@ -23,13 +23,13 @@
         }
     </script>
     <style>
-   html, body {
+ html, body {
   margin: 0;
   padding: 0;
-  overflow: hidden;       /* prevent internal scrollbars */
-  height: auto !important; /* don’t force 100vh */
-  min-height: 0 !important; /* reset min-height */
-  padding-bottom: 80px; /* ✅ add safe space */
+  overflow-x: hidden;     /* only hide sideways scroll, allow vertical */
+  height: auto !important;
+  min-height: 0 !important;
+  padding-bottom: 120px; /* extra padding so “Health Insights” isn’t cut off */
 
 }
         .glass-panel {
@@ -64,7 +64,7 @@
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-6 py-4">
-        <div class="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-8 h-auto lg:h-[calc(100vh-300px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 h-auto lg:h-auto">
             
             <!-- Left Panel - Sweetener Browser -->
             <div class="glass-panel rounded-3xl p-6 overflow-hidden flex flex-col">
