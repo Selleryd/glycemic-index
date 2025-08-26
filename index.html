@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,14 +23,12 @@
         }
     </script>
     <style>
- html, body {
+   html, body {
   margin: 0;
   padding: 0;
-  overflow-x: hidden;  /* only hide sideways scroll */
-  overflow-y: auto;    /* allow vertical scrolling */
-  height: auto !important;
-  min-height: 0 !important;
-  padding-bottom: 80px; /* ensures no bottom cut-off */
+  overflow: hidden;       /* prevent internal scrollbars */
+  height: auto !important; /* don’t force 100vh */
+  min-height: 0 !important; /* reset min-height */
 }
         .glass-panel {
             background: rgba(255, 255, 255, 0.95);
@@ -61,25 +60,9 @@
 <body class="bg-transparent min-h-screen text-white">
 
 
-<!-- Main Content -->
-<main class="max-w-7xl mx-auto px-6 py-4">
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-    
-    <!-- Left Side: Sweetener Database -->
-    <div class="lg:overflow-y-auto lg:h-screen pr-4">
-      <!-- your left panel content goes here -->
-    </div>
-
-    <!-- Right Side: Glycemic Analysis -->
-    <div class="lg:overflow-y-visible lg:h-screen">
-      <!-- your right panel content goes here -->
-    </div>
-
-  </div>
-</main>
-
-
-
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-4">
+        <div class="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-8 h-auto lg:h-[calc(100vh-300px)]">
             
             <!-- Left Panel - Sweetener Browser -->
             <div class="glass-panel rounded-3xl p-6 overflow-hidden flex flex-col">
@@ -585,7 +568,6 @@
   window.addEventListener("resize", () => {
     setTimeout(sendHeight, 200); // give browser time to settle
   });
-    
 </script>
 
 </html>
