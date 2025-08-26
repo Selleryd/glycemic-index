@@ -22,13 +22,14 @@
         }
     </script>
     <style>
-  html, body {
+ html, body {
   margin: 0;
   padding: 0;
-  overflow-x: hidden; /* only block sideways scroll */
-  overflow-y: auto;   /* allow vertical scrolling */
+  overflow-x: hidden;  /* only hide sideways scroll */
+  overflow-y: auto;    /* allow vertical scrolling */
   height: auto !important;
   min-height: 0 !important;
+  padding-bottom: 80px; /* ensures no bottom cut-off */
 }
         .glass-panel {
             background: rgba(255, 255, 255, 0.95);
