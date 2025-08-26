@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Interactive Glycemic Index Chart (Glucose/Dextrose = 100)</title>
+
+<!-- D3.js v7 -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+<style>
+  :root{
+    --bg:#ffffff; --fg:#111213; --muted:#6b7280; --card:#f8f9fb;
+    --line:#e5e7eb; --line-strong:#d1d5db; --accent:#2563eb;
+    --low:#22c55e; --low2:#16a34a;
+    --med:#f59e0b; --med2:#d97706;
+    --high:#ef4444; --high2:#dc2626;
+    --brand:#6366f1; /* MonkVee neutral accent (GI=0) */
+    --focus:#0ea5e9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root{
+      --bg:#0b0b0c; --fg:#eaeef2; --muted:#a2a9b4; --card:#151619;
+      --line:#212228; --line-strong:#2b2d34; --accent:#60a5fa;
+      --low:#16a34a; --low2:#166534;
+      --med:#d97706; --med2:#92400e;
+      --high:#dc2626; --high2:#991b1b;
+      --brand:#818cf8;
+      --focus:#22d3ee;
+    }
+  }
+
+  html,body{background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial;}
+  .wrap{max-width:1100px; margin:24px auto; padding:0 16px;}
+  h1{font-weight:700; font-size:clamp(22px,2.4vw,30px); margin:8px 0 6px;}
+  p.lede{color:var(--muted); margin:0 0 18px;}
+  .muted{color:var(--muted);}
+  .row{display:grid; grid-template-columns: 300px 1fr; gap:18px;}
+  @media (max-width:900px){ .row{grid-template-columns:1fr;} }
+
+  /* Controls */
+  .controls{
+    position:sticky; top:8px; align-self:start;
+    background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; box-shadow:0 2px 10px rgba(0,0,0,.05);
+  }
+  .controls h2{font-size:16px; margin:0 0 6px;}
+  .chipset{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px}
+  .chip{
+    border:1px solid var(--line-strong); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; user-select:none;
+    background:transparent; color:var(--fg);
+  }
+  .chip[aria-pressed="true"]{ background:var(--accent); color:white; border-color:transparent; }
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0;}
+  .grid2 > * {width:100%}
+  input[type="search"], select{
+    background:var(--bg); color:var(--fg); border:1px solid var(--line-strong);
+    border-radius:10px; padding:10px 12px; outline:none;
+  }
+  input[type="search"]:focus, select:focus{ box-shadow:0 0 0 3px color-mix(in oklab, var(--focus) 40%, transparent); border-color:var(--focus); }
+  .toggles{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px;}
+  .btn{
+    appearance:none; border:1px solid var(--line-strong); background:var(--bg); color:var(--fg);
+    padding:9px 12px; border-radius:10px; cursor:pointer;
+  }
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
+  .btn.small{ padding:7px 10px; font-size:13px; }
+  .stack-6 > *{margin-top:6px}
+  details summary{cursor:pointer; list-style:none;}
+  details summary::-webkit-details-marker{display:none}
+  details summary .caret{display:inline-block; transition:transform .2s}
+  details[open] summary .caret{transform:rotate(90deg)}
+
+  /* Chart card */
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.05);
+  }
+  .card .head{
+    padding:14px 14px 0; display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 16px;
+  }
+  .card .head h3{margin:0; font-size:18px; font-weight:700}
+  .legend{display:flex; gap:10px; margin:0 14px 10px; flex-wrap:wrap}
+  .legend .pill{display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line-strong); border-radius:999px; padding:6px 10px; font-size:12px;}
+  .sw{width:14px; height:8px; border-radius:999px}
+  .sw.low{background:linear-gradient(90deg,var(--low),var(--low2))}
+  .sw.med{background:linear-gradient(90deg,var(--med),var(--med2))}
+  .sw.high{background:repeating-linear-gradient(45deg,var(--high) 0 6px,var(--high2) 6px 12px)}
+  .sw.brand{background:linear-gradient(90deg,var(--brand),color-mix(in oklab,var(--brand) 60%, #fff))}
+  .chart{padding:6px 8px 12px 8px}
+  .chart .svg-wrap{overflow:auto; border-top:1px dashed var(--line); padding-top:12px}
+  svg{max-width:100%}
+  .axis text{fill:var(--muted); font-size:12px}
+  .ref-line{stroke:var(--muted); stroke-dasharray:3 4; opacity:.8}
+  .ref-label{fill:var(--muted); font-size:12px}
+  .bar-label{font-size:13px; fill:var(--fg)}
+  .aka{fill:var(--muted); font-size:11px}
+  .bar{rx:6; ry:6}
+  .bar.brand{fill:none; stroke:var(--brand); stroke-width:2.5}
+  .row-focus{outline:3px solid color-mix(in oklab, var(--focus) 40%, transparent); outline-offset:2px; border-radius:8px}
+  .alias-link{font-size:12px; fill:var(--muted)}
+
+  /* Tooltip */
+  .tip{
+    position:fixed; pointer-events:none; background:var(--bg); border:1px solid var(--line-strong);
+    border-radius:10px; padding:10px 12px; box-shadow:0 8px 30px rgba(0,0,0,.20); min-width:220px; z-index:30;
+  }
+  .tip .t1{font-weight:700}
+  .tip .t2{font-size:12px; color:var(--muted); margin-bottom:6px}
+  .tip .kv{display:grid; grid-template-columns:110px 1fr; gap:6px; font-size:13px}
+  .tip .copy{margin-top:8px; display:flex; gap:8px}
+  .tip .copy button{border:1px solid var(--line-strong); background:var(--card); border-radius:8px; padding:6px 8px; font-size:12px; cursor:pointer}
+
+  /* Compare panel */
+  .compare{
+    margin-top:12px; padding:10px; border-top:1px dashed var(--line);
+    display:none; /* toggled */
+  }
+  .compare.active{display:block}
+  .cmp-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .cmp-item{background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px}
+  .cmp-name{font-weight:700; font-size:14px}
+  .cmp-gi{font-weight:800; font-size:28px}
+  .cmp-bar{height:10px; border-radius:6px; background:var(--line)}
+  .cmp-bar > span{display:block; height:100%; border-radius:6px}
+  .cmp-meta{font-size:12px; color:var(--muted)}
+  .cmp-actions{display:flex; gap:8px; margin-top:8px}
+
+  /* Footer notes */
+  .foot{margin:10px 14px 16px; color:var(--muted); font-size:12px}
+
+  /* Mobile niceties */
+  @media (max-width:600px){
+    .controls{position:static}
+    .chip{padding:7px 12px}
+    .cmp-grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Glycemic Index of Sweeteners (Glucose = 100)</h1>
+    <p class="lede">Glucose (<em>dextrose</em>) defines GI&nbsp;100. Bars show how quickly each item can raise blood sugar relative to glucose. <span class="muted">Tip: a “monk fruit” product can behave very differently depending on its <strong>carrier</strong> (e.g., dextrose vs erythritol).</span></p>
+
+    <div class="row">
+      <!-- Controls -->
+      <aside class="controls">
+        <h2>Filter by category</h2>
+        <div class="chipset" id="chips"></div>
+        <div class="grid2">
+          <input id="search" type="search" placeholder="Search name or aka…" aria-label="Search sweeteners" />
+          <select id="sort" aria-label="Sort items">
+            <option value="gi-desc">Sort: GI (high → low)</option>
+            <option value="gi-asc">Sort: GI (low → high)</option>
+            <option value="name-asc">Sort: Name (A → Z)</option>
+            <option value="cat-asc">Sort: Category</option>
+          </select>
+        </div>
+        <details>
+          <summary><span class="caret">▶</span> More options</summary>
+          <div class="stack-6" style="margin-top:8px">
+            <button class="btn small" id="btnTableView" type="button" aria-pressed="false">Toggle Table View</button>
+            <button class="btn small" id="btnExportPNG" type="button">Download PNG</button>
+            <button class="btn small" id="btnExportSVG" type="button">Download SVG</button>
+            <button class="btn small" id="btnEmbed" type="button">Copy Embed Code</button>
+            <button class="btn small" id="btnReset" type="button">Reset Filters</button>
+          </div>
+        </details>
+        <div class="toggles">
+          <span class="muted" style="font-size:13px">Select up to two bars to compare ↓</span>
+          <button class="btn primary small" id="btnClearCompare" type="button" title="Clear comparison (Esc)">Clear compare</button>
+        </div>
+      </aside>
+
+      <!-- Chart -->
+      <section class="card" aria-label="Interactive GI chart">
+        <div class="head">
+          <h3>Interactive chart</h3>
+          <span class="muted" style="font-size:13px">Bands: <strong>Low ≤55</strong> · <strong>Medium 56–69</strong> · <strong>High ≥70</strong></span>
+        </div>
+        <div class="legend">
+          <span class="pill"><span class="sw low"></span> Low GI</span>
+          <span class="pill"><span class="sw med"></span> Medium GI</span>
+          <span class="pill"><span class="sw high"></span> High GI</span>
+          <span class="pill"><span class="sw brand"></span> MonkVee (GI≈0)</span>
+        </div>
+
+        <div class="chart">
+          <div class="svg-wrap">
+            <svg id="chart" width="1000" height="700" role="img" aria-describedby="refdesc"></svg>
+          </div>
+
+          <!-- Compare panel -->
+          <div class="compare" id="compare">
+            <div class="cmp-grid" id="cmpGrid"></div>
+            <div class="cmp-actions">
+              <button class="btn small" id="swap" type="button">Swap</button>
+              <button class="btn small" id="clear" type="button">Clear</button>
+            </div>
+          </div>
+
+          <p id="refdesc" class="foot">
+            Reference: Glucose (dextrose) is set to GI 100; sucrose (table sugar) is typically ≈65; fructose ≈15. GI values vary by method and formulation.
+            MonkVee <strong>Pure Monk Fruit</strong>, <strong>Pure Stevia</strong>, and <strong>Monk Fruit + Erythritol (1:1)</strong> are non-glycemic (GI ≈ 0).
+          </p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Tooltip -->
+  <div class="tip" id="tip" style="display:none"></div>
+
+<script>
+/*** ---------------------------
+ * DATA
+ * -------------------------- */
+const RAW = {
+  meta: {
+    gi_reference: "Glucose (aka dextrose) is GI 100",
+    bands: {low:"<=55", medium:"56–69", high:">=70"}
+  },
+  items: [
+    /* MONKVEE (GI ≈ 0) */
+    { name:"MonkVee Monk Fruit + Erythritol (1:1 Blend)", aka:"MonkVee 1:1", category:"Brand Blend", gi:0 },
+    { name:"MonkVee Pure Monk Fruit", aka:"MonkVee Luo Han Guo", category:"Brand Pure", gi:0 },
+    { name:"MonkVee Pure Stevia", aka:"MonkVee Stevia Extract", category:"Brand Pure", gi:0 },
+
+    /* SUGARS */
+    { name:"Glucose", aka:"Dextrose", category:"Sugar", gi:100 },
+    { name:"Maltose", aka:"", category:"Sugar", gi:105 },
+    { name:"Sucrose", aka:"Table Sugar", category:"Sugar", gi:65 },
+    { name:"Fructose", aka:"Fruit Sugar", category:"Sugar", gi:15 },
+    { name:"Lactose", aka:"Milk Sugar", category:"Sugar", gi:46 },
+
+    /* SYRUPS */
+    { name:"Rice Syrup", aka:"Brown Rice Syrup", category:"Syrup", gi:98 },
+    { name:"Maple Syrup", aka:"", category:"Syrup", gi:54 },
+    { name:"Honey", aka:"", category:"Syrup", gi:58 },
+    { name:"Tapioca Syrup", aka:"", category:"Syrup", gi:70 },
+    { name:"HFCS", aka:"High Fructose Corn Syrup", category:"Syrup", gi:65 },
+    { name:"Agave Nectar", aka:"", category:"Syrup", gi:25 },
+
+    /* POLYOLS */
+    { name:"Erythritol", aka:"Polyol", category:"Polyol", gi:0 },
+    { name:"Xylitol", aka:"Polyol", category:"Polyol", gi:10 },
+    { name:"Sorbitol", aka:"Polyol", category:"Polyol", gi:9 },
+
+    /* ADDITIVE / CARRIER */
+    { name:"Maltodextrin", aka:"Carrier", category:"Additive", gi:105 },
+
+    /* HIDDEN SUGAR ALIASES */
+    { name:"Evaporated Cane Juice", aka:"Alias of sucrose", category:"Alias", alias_of:"Sucrose" },
+    { name:"Cane Crystals", aka:"Alias of sucrose", category:"Alias", alias_of:"Sucrose" },
+    { name:"Turbinado Sugar", aka:"Raw cane; alias of sucrose", category:"Alias", alias_of:"Sucrose" },
+    { name:"Muscovado Sugar", aka:"Unrefined cane; alias of sucrose", category:"Alias", alias_of:"Sucrose" },
+    { name:"Cane Juice Solids", aka:"Alias of sucrose", category:"Alias", alias_of:"Sucrose" },
+    { name:"Corn Syrup Solids", aka:"Alias of glucose/maltose syrups", category:"Alias", alias_of:"Glucose" },
+    { name:"Fruit Juice Concentrate", aka:"Often medium-high GI", category:"Alias", alias_of:"Sucrose" },
+    { name:"Brown Rice Syrup (Label Alias)", aka:"Alias of Rice Syrup", category:"Alias", alias_of:"Rice Syrup" },
+    { name:"Glucose Solids", aka:"Dextrose solids", category:"Alias", alias_of:"Glucose" }
+  ]
+};
+
+/*** ---------------------------
+ * STATE & HELPERS
+ * -------------------------- */
+const byName = new Map(RAW.items.map(d=>[d.name,d]));
+function effectiveGI(item){
+  if(item.alias_of){
+    const base = byName.get(item.alias_of);
+    return base ? base.gi : (item.gi ?? 0);
+  }
+  return item.gi ?? 0;
+}
+function bandOf(gi){
+  if(gi <= 55) return "Low";
+  if(gi <= 69) return "Medium";
+  return "High";
+}
+function pctOfGlucose(gi){ return Math.round((gi/100)*100); }
+function deltaVsGlucose(gi){ const n=gi-100; return (n>0?"+":"") + n; }
+
+const ALL_CATS = Array.from(new Set(RAW.items.map(d=>d.category)));
+const ACTIVE = new Set(ALL_CATS); // all on initially
+let searchQ = "";
+let sortMode = "gi-desc";
+let tableView = false;
+
+const sel = []; // up to two selected items for compare
+
+/*** ---------------------------
+ * UI: Filter chips
+ * -------------------------- */
+const chips = d3.select("#chips");
+chips.selectAll("button.chip")
+  .data(ALL_CATS)
+  .enter().append("button")
+  .attr("class","chip")
+  .attr("type","button")
+  .attr("role","switch")
+  .attr("aria-pressed","true")
+  .text(d=>d)
+  .on("click", (e,d)=>{
+    if(ACTIVE.has(d)) ACTIVE.delete(d); else ACTIVE.add(d);
+    d3.select(e.currentTarget).attr("aria-pressed", ACTIVE.has(d) ? "true":"false");
+    render();
+  });
+
+/*** ---------------------------
+ * UI: Search / Sort
+ * -------------------------- */
+d3.select("#search").on("input", (e)=>{ searchQ = e.currentTarget.value.toLowerCase().trim(); render(); });
+d3.select("#sort").on("change", (e)=>{ sortMode = e.currentTarget.value; render(); });
+
+d3.select("#btnReset").on("click", ()=>{
+  ACTIVE.clear(); ALL_CATS.forEach(c=>ACTIVE.add(c));
+  chips.selectAll(".chip").attr("aria-pressed","true");
+  searchQ=""; d3.select("#search").property("value","");
+  sortMode="gi-desc"; d3.select("#sort").property("value","gi-desc");
+  clearCompare();
+  render();
+});
+
+d3.select("#btnTableView").on("click", (e)=>{
+  tableView = !tableView;
+  e.currentTarget.setAttribute("aria-pressed", tableView ? "true":"false");
+  render();
+});
+
+/*** ---------------------------
+ * DRAW
+ * -------------------------- */
+const svg = d3.select("#chart");
+let width = 980, rowH = 44, margin = {top: 10, right: 24, bottom: 20, left: 230};
+function resize(){
+  // responsive width
+  const box = svg.node().getBoundingClientRect();
+  width = Math.max(700, box.width);
+}
+window.addEventListener("resize", ()=>{ resize(); render(); });
+
+function currentData(){
+  return RAW.items
+   .map(d => ({...d, gi_eff: effectiveGI(d), band: bandOf(effectiveGI(d))}))
+   .filter(d => ACTIVE.has(d.category))
+   .filter(d => {
+      if(!searchQ) return true;
+      const str = (d.name+" "+(d.aka||"")+(d.alias_of?(" "+d.alias_of):"")).toLowerCase();
+      return str.includes(searchQ);
+   })
+   .sort((a,b)=>{
+      if(sortMode==="gi-desc") return d3.descending(a.gi_eff,b.gi_eff);
+      if(sortMode==="gi-asc")  return d3.ascending(a.gi_eff,b.gi_eff);
+      if(sortMode==="name-asc") return d3.ascending(a.name,b.name);
+      if(sortMode==="cat-asc"){ const c = d3.ascending(a.category,b.category); return c===0?d3.ascending(a.name,b.name):c; }
+      return 0;
+   });
+}
+
+function colorFor(d){
+  if(d.category.startsWith("Brand")) return "none"; // stroked outline
+  if(d.category==="Alias") {
+    // inherit band color from base
+    const base = byName.get(d.alias_of);
+    return base ? colorFor({...base, gi_eff: base.gi}) : "#aaa";
+  }
+  if(d.gi_eff<=55) return `url(#lowGrad)`;
+  if(d.gi_eff<=69) return `url(#medGrad)`;
+  return `url(#highPattern)`;
+}
+
+function render(){
+  resize();
+  const data = currentData();
+  const maxGI = Math.max(105, d3.max(data, d=>d.gi_eff) || 100);
+  const height = margin.top + margin.bottom + rowH*data.length + 30;
+
+  svg.attr("width", width).attr("height", height);
+
+  // defs: gradients & pattern
+  const defs = svg.selectAll("defs").data([null]).join("defs");
+  const lowGrad = defs.selectAll("#lowGrad").data([null]).join("linearGradient")
+    .attr("id","lowGrad").attr("x1","0").attr("x2","1");
+  lowGrad.selectAll("stop").data([{o:0,c:getComputedStyle(document.documentElement).getPropertyValue('--low').trim()},{o:1,c:getComputedStyle(document.documentElement).getPropertyValue('--low2').trim()}])
+    .join("stop").attr("offset",(d,i)=>i).attr("stop-color",d=>d.c);
+
+  const medGrad = defs.selectAll("#medGrad").data([null]).join("linearGradient")
+    .attr("id","medGrad").attr("x1","0").attr("x2","1");
+  medGrad.selectAll("stop").data([{o:0,c:getComputedStyle(document.documentElement).getPropertyValue('--med').trim()},{o:1,c:getComputedStyle(document.documentElement).getPropertyValue('--med2').trim()}])
+    .join("stop").attr("offset",(d,i)=>i).attr("stop-color",d=>d.c);
+
+  const pat = defs.selectAll("#highPattern").data([null]).join("pattern")
+    .attr("id","highPattern").attr("patternUnits","userSpaceOnUse").attr("width",12).attr("height",12).attr("patternTransform","rotate(45)");
+  pat.append("rect").attr("width",12).attr("height",12).attr("fill", getComputedStyle(document.documentElement).getPropertyValue('--high2').trim());
+  pat.append("rect").attr("width",6).attr("height",12).attr("fill", getComputedStyle(document.documentElement).getPropertyValue('--high').trim());
+
+  const g = svg.selectAll("g.main").data([null]).join("g").attr("class","main");
+
+  const x = d3.scaleLinear().domain([0, maxGI]).range([margin.left, width - margin.right]);
+  // y positions
+  const y = (_, i)=> margin.top + i*rowH + 8;
+
+  // REF LINE @ 100
+  g.selectAll("line.ref-line").data([100]).join("line")
+    .attr("class","ref-line")
+    .attr("x1", x(100)).attr("x2", x(100))
+    .attr("y1", margin.top - 4).attr("y2", height - margin.bottom)
+    .attr("aria-hidden","true");
+
+  g.selectAll("text.ref-label").data([100]).join("text")
+    .attr("class","ref-label")
+    .attr("x", x(100)+6).attr("y", margin.top+8)
+    .text("Glucose = 100");
+
+  // axis (top ticks)
+  const axis = d3.axisTop(x).ticks(6).tickSizeOuter(0);
+  g.selectAll("g.axis").data([null]).join("g").attr("class","axis")
+   .attr("transform",`translate(0,${margin.top})`).call(axis);
+
+  // rows (group per item)
+  const rows = g.selectAll("g.row")
+    .data(data, d=>d.name);
+  const rowsEnter = rows.enter().append("g").attr("class","row");
+  rowsEnter.merge(rows)
+    .attr("transform",(d,i)=>`translate(0,${y(d,i)})`)
+    .attr("tabindex", 0)
+    .attr("role","button")
+    .attr("aria-label",d=>`${d.name}, GI ${d.gi_eff}`)
+    .on("click",(e,d)=> toggleCompare(d))
+    .on("keydown",(e,d)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggleCompare(d); } })
+    .on("mousemove",(e,d)=> showTip(e,d))
+    .on("mouseleave", hideTip)
+    ;
+
+  rows.exit().remove();
+
+  // labels (left)
+  rowsEnter.append("text").attr("class","bar-label");
+  rows.select(".bar-label")
+    .attr("x", margin.left - 12).attr("y", 12)
+    .attr("text-anchor","end")
+    .text(d=>d.name);
+
+  rowsEnter.append("text").attr("class","aka");
+  rows.select(".aka")
+    .attr("x", margin.left - 12).attr("y", 28)
+    .attr("text-anchor","end")
+    .text(d=>{
+      if(d.alias_of) return `Alias of ${d.alias_of}`;
+      return d.aka ? d.aka : "";
+    });
+
+  // alias link icon
+  rowsEnter.append("text").attr("class","alias-link");
+  rows.select(".alias-link")
+    .attr("x", margin.left - 12).attr("y", 40)
+    .attr("text-anchor","end")
+    .text(d=> d.category==="Alias" ? "🔗" : "");
+
+  // bars
+  rowsEnter.append("rect").attr("class","bar");
+  rows.select(".bar")
+    .attr("x", x(0))
+    .attr("y", 4)
+    .attr("height", 20)
+    .attr("class", d => d.category.startsWith("Brand") ? "bar brand" : "bar")
+    .attr("width", d => Math.max(2, x(d.gi_eff)-x(0)))
+    .attr("fill", d => d.category.startsWith("Brand") ? "none" : colorFor(d))
+    .attr("stroke", d => d.category.startsWith("Brand") ? getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() : "none")
+    .attr("stroke-width", d => d.category.startsWith("Brand") ? 2.5 : 0);
+
+  // value text (end of bar)
+  rowsEnter.append("text").attr("class","val");
+  rows.select(".val")
+    .attr("x", d=> x(d.gi_eff)+6).attr("y", 20)
+    .attr("font-size","12px").attr("fill", "var(--muted)")
+    .text(d=> `GI ${d.gi_eff}`);
+
+  // highlight selection
+  g.selectAll("g.row").classed("row-focus", d => sel.find(s=>s.name===d.name));
+
+  // adjust SVG height for # rows
+  svg.attr("height", margin.top + data.length*rowH + 60);
+
+  // compare panel render
+  renderCompare();
+}
+
+/*** ---------------------------
+ * TOOLTIP
+ * -------------------------- */
+const tip = d3.select("#tip");
+function showTip(e,d){
+  const gi = d.gi_eff;
+  const aliasTxt = d.alias_of ? `Alias of ${d.alias_of} · ` : "";
+  const brandTag = d.category.startsWith("Brand") ? `<span style="color:var(--brand);font-weight:600">No sugar spike (GI≈0)</span><br/>` : "";
+  tip.html(`
+    <div class="t1">${d.name}</div>
+    <div class="t2">${d.aka || (d.alias_of?`Alias of ${d.alias_of}`:"")}</div>
+    ${brandTag}
+    <div class="kv">
+      <div>Category</div><div>${d.category}</div>
+      <div>GI</div><div><strong>${gi}</strong> (${bandOf(gi)})</div>
+      <div>% of glucose</div><div>${pctOfGlucose(gi)}%</div>
+      <div>Δ vs glucose</div><div>${deltaVsGlucose(gi)}</div>
+      ${d.alias_of ? `<div>Note</div><div>${aliasTxt}GI inherits base</div>`:""}
+    </div>
+    <div class="copy">
+      <button type="button" onclick="copyFact('${encodeURIComponent(d.name)}',${gi})">Copy facts</button>
+      <button type="button" onclick="copyName('${encodeURIComponent(d.name)}')">Copy name</button>
+    </div>
+  `).style("display","block");
+
+  const pad = 14, w = 280;
+  const x = Math.min(window.innerWidth - w - pad, e.clientX + 16);
+  const y = Math.max(12, e.clientY - 10);
+  tip.style("left", x+"px").style("top", y+"px");
+}
+function hideTip(){ tip.style("display","none"); }
+window.copyFact = function(nameEnc, gi){
+  const name = decodeURIComponent(nameEnc);
+  const text = `${name}: GI ~${gi} (${bandOf(gi)}), ~${pctOfGlucose(gi)}% of glucose (GI=100).`;
+  navigator.clipboard.writeText(text);
+}
+window.copyName = function(nameEnc){
+  navigator.clipboard.writeText(decodeURIComponent(nameEnc));
+}
+
+/*** ---------------------------
+ * COMPARE
+ * -------------------------- */
+const cmp = d3.select("#compare");
+const cmpGrid = d3.select("#cmpGrid");
+d3.select("#clear").on("click", clearCompare);
+d3.select("#swap").on("click", ()=>{
+  if(sel.length===2){ sel.reverse(); renderCompare(); }
+});
+d3.select("#btnClearCompare").on("click", clearCompare);
+window.addEventListener("keydown",(e)=>{ if(e.key==="Escape") clearCompare(); });
+
+function toggleCompare(d){
+  const idx = sel.findIndex(s=>s.name===d.name);
+  if(idx>=0){ sel.splice(idx,1); }
+  else{
+    if(sel.length<2) sel.push(d);
+    else { sel[0]=sel[1]; sel[1]=d; }
+  }
+  render();
+}
+function clearCompare(){
+  sel.length = 0;
+  renderCompare();
+  render();
+}
+function renderCompare(){
+  if(sel.length===0){ cmp.classed("active", false); cmpGrid.html(""); return; }
+  cmp.classed("active", true);
+  cmpGrid.html("");
+  sel.forEach(s=>{
+    const gi = s.gi_eff;
+    const band = bandOf(gi);
+    const color = gi<=55? getCSS('--low') : gi<=69? getCSS('--med') : getCSS('--high');
+    const item = document.createElement("div");
+    item.className="cmp-item";
+    item.innerHTML = `
+      <div class="cmp-name">${s.name}</div>
+      <div class="cmp-gi">${gi}</div>
+      <div class="cmp-bar"><span style="width:${Math.max(2, Math.min(gi,100))}%; background:${color}"></span></div>
+      <div class="cmp-meta">${band} · ${pctOfGlucose(gi)}% of glucose · Δ ${deltaVsGlucose(gi)}</div>
+    `;
+    cmpGrid.node().appendChild(item);
+  });
+}
+function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+/*** ---------------------------
+ * EXPORTS
+ * -------------------------- */
+d3.select("#btnExportSVG").on("click", ()=>{
+  const node = document.getElementById("chart");
+  const src = (new XMLSerializer()).serializeToString(node);
+  const blob = new Blob([src], {type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  download(url, "gi-chart.svg");
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+});
+
+d3.select("#btnExportPNG").on("click", ()=>{
+  const node = document.getElementById("chart");
+  const svgText = (new XMLSerializer()).serializeToString(node);
+  const img = new Image();
+  const svg64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgText)));
+  img.onload = function(){
+    const canvas = document.createElement('canvas');
+    canvas.width = node.viewBox.baseVal.width || node.getBoundingClientRect().width || 1200;
+    canvas.height = node.viewBox.baseVal.height || node.getBoundingClientRect().height || 800;
+    const ctx = canvas.getContext('2d');
+    // dark bg if dark mode
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    ctx.fillStyle = isDark ? '#0b0b0c' : '#ffffff';
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      download(url, "gi-chart.png");
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    });
+  };
+  img.src = svg64;
+});
+
+function download(url, name){
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/*** ---------------------------
+ * EMBED CODE
+ * -------------------------- */
+d3.select("#btnEmbed").on("click", ()=>{
+  const code = `<iframe src="YOUR_URL/gi-chart.html" title="GI Chart" loading="lazy" style="width:100%;min-height:700px;border:0;border-radius:12px;"></iframe>`;
+  navigator.clipboard.writeText(code);
+  alert("Embed code copied! Replace YOUR_URL with the hosted file URL.");
+});
+
+/*** ---------------------------
+ * INIT
+ * -------------------------- */
+render();
+</script>
+</body>
+</html>
